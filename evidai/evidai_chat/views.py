@@ -1,4 +1,3 @@
-import requests
 import google.generativeai as genai
 import os
 import json
@@ -9,27 +8,25 @@ from . import models
 import logging
 import hashlib
 import secrets
-from transformers import AutoTokenizer, AutoModel
-import torch
-from sentence_transformers import SentenceTransformer, util
-import numpy as np
-import re
 from elasticsearch import Elasticsearch
 
 # Define the connection settings
-es = Elasticsearch("http://localhost:9200")  # Increased timeout
+host_ip = os.environ['ES_HOST_NAME']
+print(host_ip)
 
-index_name = "evid_prompts_new"
+es = Elasticsearch(hosts=[{'host': f'{host_ip}', 'port': 9200, 'scheme': 'http'}])  # Increased timeout 
+
+index_name = os.environ['EL_IDX_NAME']#"evid_prompts_new"
 
 # Load pre-trained model and tokenizer
-tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')
-model = AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')
+# tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')
+# model = AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')
 
-key = os.environ["GOOGLE_API_KEY"] = "AIzaSyA9YvAFvikQ8MMLuF2qBgTU09Ier7KtW1U"
-genai.configure(api_key="AIzaSyA9YvAFvikQ8MMLuF2qBgTU09Ier7KtW1U")
+key = os.environ["GOOGLE_API_KEY"]
+genai.configure(api_key=f"{key}")
 
 # Load the model
-model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+# model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
 
 
 # Configure the logging settings
@@ -66,22 +63,6 @@ def log_message(level, message):
 def hello_world(request):
     return JsonResponse({"message":"Request received successfully","data":[],"status":True},status=200)
 
-
-def get_embedding(text):
-    inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True)
-    with torch.no_grad():
-        outputs = model(**inputs)
-    return outputs.last_hidden_state.mean(dim=1).numpy()
-
-
-def update_embeddings():
-    prompts = models.BasicPrompts.objects.all()
-    for prm in prompts:
-        embedding = get_embedding(prm.prompt).tolist()
-        prm.embedding = embedding
-        prm.save()
-
-# update_embeddings()
 
 def find_most_relevant_prompt(question):
     search_query = {
@@ -142,124 +123,6 @@ def get_prompt_category(question,context):
     return response
 
 
-def identify_asset(question):
-    ques = question
-    assets = ['Anthropic','Canva','Databricks','Deel','Discord','Epic Games',
-              'Groq','Kraken','OpenAI','Plaid','Revolut','SHEIN']
-    
-    cleaned_question = re.sub(r'[^a-zA-Z0-9\s]', '', ques).lower()
-    total_assets = set()
-    # Iterate over the assets list to find a match
-    for asset in assets:
-        # Convert the asset to lowercase for comparison
-        if asset.lower() in cleaned_question:
-            total_assets.add(asset)   # Return the matching asset
-    
-    return total_assets  # Return None if no match is found
-
-
-def get_ipinfo():
-    IPKEY = "2981978717330fdfe4548e4320bd224dc102b1d3262bf542b4a71fc6"
-    url = f"https://api.ipdata.co?api-key={IPKEY}"
-    response = requests.get(url)
-    res = response.json()
-    response = {
-        "asn": res.get('asn').get('asn'),
-        "asnName": res.get('asn').get('name'),
-        "city": res.get('city'),
-        "countryName": res.get('country_name'),
-        "ip": res.get('ip'),
-        "latitude": res.get('latitude'),
-        "longitude": res.get('longitude'),
-        "isEu": res.get('is_eu'),
-        "isAnonymous": res.get('threat').get('is_anonymous'),
-        "isBogon": res.get('threat').get('is_bogon'),
-        "isDatacenter": res.get('threat').get('is_datacenter'),
-        "isIcloudRelay": res.get('threat').get('is_icloud_relay'),
-        "isKnownAbuser": res.get('threat').get('is_known_abuser'),
-        "isKnownAttacker": res.get('threat').get('is_known_attacker'),
-        "isProxy": res.get('threat').get('is_proxy'),
-        "isThreat": res.get('threat').get('is_threat'),
-        "isTor": res.get('threat').get('is_tor')
-    }
-
-    return response
-
-
-@csrf_exempt
-def login(request):
-    try:
-        if request.method=="POST":
-            data = json.loads(request.body)
-            user_id = data.get('user_id')
-            password = data.get('password')
-            # res = data.get('location_details')
-            res = get_ipinfo()
-            location_api = {
-                            "asn": res.get('asn').get('asn'),
-                            "asnName": res.get('asn').get('name'),
-                            "city": res.get('city'),
-                            "countryName": res.get('country_name'),
-                            "ip": res.get('ip'),
-                            "latitude": res.get('latitude'),
-                            "longitude": res.get('longitude'),
-                            "isEu": res.get('is_eu'),
-                            "isAnonymous": res.get('threat').get('is_anonymous'),
-                            "isBogon": res.get('threat').get('is_bogon'),
-                            "isDatacenter": res.get('threat').get('is_datacenter'),
-                            "isIcloudRelay": res.get('threat').get('is_icloud_relay'),
-                            "isKnownAbuser": res.get('threat').get('is_known_abuser'),
-                            "isKnownAttacker": res.get('threat').get('is_known_attacker'),
-                            "isProxy": res.get('threat').get('is_proxy'),
-                            "isThreat": res.get('threat').get('is_threat'),
-                            "isTor": res.get('threat').get('is_tor')
-                            }
-
-            login_check_api = "https://api-development.evident.capital/user/login"
-            data = {
-                        "email": user_id,
-                        "password": password,
-                        "ipInfo": location_api
-                    }
-            response = requests.post(login_check_api, json=data)
-            token = response.get('token')
-            if token:
-                return JsonResponse({"message":"User authenticated", "status":True, "data":{"response":"Login successfull"}},status=200)
-            else:
-                return JsonResponse({"message":"User authentication Failed", "status":False, "data":{"response":"Login Failed"}},status=200)
-        else:           
-            log_message('error', 'Invalid method request, POST method is expected.')
-            return JsonResponse({"message":"Unexpected error occured","data":{
-                "response":"Invalid method request, POST method is expected."},"status":False},status=200)
-    except Exception as e:
-        log_message('error','Failed to authenticate user due to - '+str(e))
-
-
-def two_factor_authentication(request):
-    try:
-        if request.method=="POST":
-            data = json.loads(request.body)
-            token = data.get('token')
-            code = data.get('code')
-            headers = {
-                    'Authorization': f'Bearer {token}',
-                    'Content-Type': 'application/json'
-                }
-            login_check_api = "https://api-development.evident.capital/user/two-factor-authentication"
-            data = {"code": code}
-            response = requests.post(login_check_api, headers=headers, json=data)
-            code = response.get('code')
-            if code:
-                return JsonResponse({"message":"2 Factor authentication completed", "status":True, "data":{"response":"Login successfull"}},status=200)
-            else:
-                return JsonResponse({"message":"You are not logged-in", "status":False, "data":{"response":"Login Failed"}},status=200)
-        else:           
-            log_message('error', 'Invalid method request, POST method is expected.')
-            return JsonResponse({"message":"Unexpected error occured","data":{
-                "response":"Invalid method request, POST method is expected."},"status":False},status=200)
-    except Exception as e:
-        log_message('error','Failed to authenticate user due to - '+str(e))
-
 @csrf_exempt
 def create_token(request):
     if request.method == "POST":
@@ -272,7 +135,9 @@ def create_token(request):
             user_id=user_id,
             defaults={'token': token},
         )
-        return JsonResponse({"message":"Token generated successfully","data":[{'token': token}],"status":True},status=200)
+        return JsonResponse({"message":"Token generated successfully",
+                             "data":[{'token': token}],
+                             "status":True},status=200)
 
     else:
         return JsonResponse({
@@ -354,7 +219,6 @@ def get_chat_session_details(request):
 # Create Session
 @csrf_exempt 
 def create_chat_session(request):
-    print("request recieved -", request)
     logging.info("Received request: %s", request.body)
     try:
         # Parse JSON data from request body
@@ -402,32 +266,23 @@ def create_chat_session(request):
 # Update title of newly created chat session
 @csrf_exempt
 def update_chat_title(question,chat_session_id):
-    # if request.method=='POST':
-    #     data = json.loads(request)
-    #     chat_session_id = data.get("chat_session_id")
-    #     question = data.get("question")
-        prompt = "Based on this question generate relative title for this conversation. Title should be short, it should not exceed 50 characters."
-        # Get the current date and time in UTC
-        current_datetime = datetime.now(timezone.utc)
+    prompt = "Based on this question generate relative title for this conversation. Title should be short, it should not exceed 50 characters."
+    # Get the current date and time in UTC
+    current_datetime = datetime.now(timezone.utc)
 
-        # Convert to ISO 8601 format
-        iso_format_datetime = current_datetime.isoformat()
-        title = get_gemini_response(question,prompt)
-        
-        try:
-            chat_session = models.ChatSession.objects.get(id=chat_session_id)
-            chat_session.title = title
-            chat_session.updated_at = iso_format_datetime
-            chat_session.save()
-            return title#JsonResponse({"message":"Title updated succesfully","data":[{"response":title}],"status":True},status=200)
-        except Exception as e:
-            log_message('error',str(e))
-            return #JsonResponse({"message":"Failed to save chat session details",
-                                #  "data":[{"response":str(e)}],"status":False},status=200)
-    # else:
-    #     log_message('error','Invalid JSON format')
-    #     return JsonResponse({"message":"Invalid request type, POST method is expected","data":[],"status":False},status=200)
-
+    # Convert to ISO 8601 format
+    iso_format_datetime = current_datetime.isoformat()
+    title = get_gemini_response(question,prompt)
+    
+    try:
+        chat_session = models.ChatSession.objects.get(id=chat_session_id)
+        chat_session.title = title
+        chat_session.updated_at = iso_format_datetime
+        chat_session.save()
+        return title
+    except Exception as e:
+        log_message('error',str(e))
+        return 
 
 def get_conversation_for_context(chat_session_id):
     all_convo = models.Conversation.objects.filter(chat_session_id=chat_session_id).order_by('-id')[:3]
@@ -445,33 +300,41 @@ def get_conversations(request):
         data = json.loads(request.body)
     
         chat_session_id=data.get('chat_session_id')
-        try:
-            all_convo = models.Conversation.objects.filter(chat_session_id=chat_session_id)
-            convo_list = [
-                {"id": convo.id, "chat_session_id": convo.chat_session_id, "question": convo.question,
-                "answer":convo.answer, "created_at":convo.created_at,"updated_at":convo.updated_at}
-                for convo in all_convo
-            ]
-            # Construct the JSON response
-            response_data = {
-                "message": "Response generated successfully",
-                "status": True,
-                "data": {
-                    "response":convo_list
+        chat_present = models.ChatSession.objects.get(id=chat_session_id)
+        if chat_present.show ==True:
+            try:
+                all_convo = models.Conversation.objects.filter(chat_session_id=chat_session_id)
+                convo_list = [
+                    {"id": convo.id, "chat_session_id": convo.chat_session_id, "question": convo.question,
+                    "answer":convo.answer, "created_at":convo.created_at,"updated_at":convo.updated_at}
+                    for convo in all_convo
+                ]
+                # Construct the JSON response
+                response_data = {
+                    "message": "Response generated successfully",
+                    "status": True,
+                    "data": {
+                        "response":convo_list
+                    }
                 }
-            }
-            return JsonResponse(response_data,status=200)
-        except Exception as e:
-            log_message('error',str(e))
-            return JsonResponse({"message": "Unexpected error occured.",
-                "status": False,
-                "dcata": {
-                    "response":str(e)
-                }},status=200)
+                return JsonResponse(response_data,status=200)
+            except Exception as e:
+                log_message('error',str(e))
+                return JsonResponse({"message": "Unexpected error occurred.",
+                    "status": False,
+                    "dcata": {
+                        "response":"Unable to get Conversations, Please try again."
+                    }},status=200)
+        else:
+            return JsonResponse({
+                "message":"Failed to get conversations",
+                "data":{"response":"Failed to get conversation details, please check if correct chat session id is passed."},
+                "status":False
+            },status=200)
     else:
         log_message('error', "Failed to get conversation. Invalid method, POST method is expected")
         return JsonResponse({
-            "message": "Unexpected error occured.",
+            "message": "Unexpected error occurred.",
             "status": False,
             "data": {'response':'Invalid method, POST method is expected'}
         }, status=200)
@@ -496,12 +359,11 @@ def delete_chat_session(request):
         chat_session_id = data.get("chat_session_id")
         try:
             chat = models.ChatSession.objects.get(id=chat_session_id)
-            # print(chat)
             chat.show = False
             chat.save()
         except Exception as e:
             log_message('error',str(e))
-            return JsonResponse({"message":"Failed to delete Chat session","data":[],"status":False},status=200)
+            return JsonResponse({"message":"Failed to delete Chat session","data":{"response":"Please check if correct chat session id is passed."},"status":False},status=200)
         return JsonResponse({"message":"Chat session deleted successfully","data":{
             "chat_session_id":chat_session_id, "title":chat.title},"status":True},status=200)
     else:
@@ -518,7 +380,6 @@ def delete_multiple_chat_session(request):
         try:
             for chats in chat_session_id:
                 chat = models.ChatSession.objects.get(id=chats)
-                # print(chat)
                 chat.show = False
                 chat.save()
                 deleted_sessions['chat_session_id']=chats
@@ -570,22 +431,18 @@ def evidAI_chat(request):
                     past_questions.add(entry['question'])
                 past_questions.add(question)
                 # 1. check question category
-                # category = get_prompt_category(context,question)
                 category = set()
                 prompt_id = set()
                 for ques in past_questions:
-                    # print(ques)
                     cat = find_most_relevant_prompt(ques)
                     prompt_id.add(cat['_id'])
                     category.add(cat['_source']['prompt'])
                 category = "\n".join(category)
-                # print(category)
             else:
                 context = ""
                 category = find_most_relevant_prompt(question)
                 prompt_id.add(category['_id'])
                 category = category['_source']['prompt']
-            # print("category - ",category)
             prompt = f"""Important:-1. IF YOU ARE NOT ABLE TO FIND ANSWER FROM THIS THEN DO INTERNET SEARCH AND MENTIONED IN ANSWER THAT IT IS GENERATED FROM GENERIC KNOWLEDGE PRESENT ON INTERNET. 2. IF YOU ARE UNABLE TO GET ANSWER FROM INTERNET AS WELL DUE TO ANY REASON JUST SAY THAT YOU ARE NOT ABLE TO GET ANSWER FOR THIS QUESTION BUT SUPPORT TEAM WILL DEFINATIETLY CAN HELP WITH THIS.
                         This is the context of conversation:-{context}\n\nThis is data from which you will have to generate answer-{category}"""
             response = get_gemini_response(question,prompt)
@@ -598,7 +455,7 @@ def evidAI_chat(request):
                                     "response":response},"status":True},status=200)
         else:
             log_message('error', 'Invalid method request, POST method is expected.')
-            return JsonResponse({"message":"Unexpected error occured","data":{
+            return JsonResponse({"message":"Unexpected error occurred","data":{
                 "response":"Invalid method request, POST method is expected."},"status":False},status=200)
     except Exception as e:
         log_message('error', str(e))

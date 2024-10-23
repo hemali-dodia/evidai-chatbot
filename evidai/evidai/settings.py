@@ -11,9 +11,13 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+USE_I18N = False
+USE_L10N = False
 
 
 # Quick-start development settings - unsuitable for production
@@ -25,7 +29,8 @@ SECRET_KEY = 'django-insecure-#=3v=@5vyp$jj-8po0y0y!o_xc0l#q92npscf=z2#$)5c*$cmr
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ["*"]
+allowed_hosts = os.environ['ALLOWED_HOSTS']
+ALLOWED_HOSTS = [f"{allowed_hosts}"]
 
 
 # Application definition
@@ -77,17 +82,30 @@ WSGI_APPLICATION = 'evidai.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
+db_name = str(os.environ['DB_NAME'])
+user_name = str(os.environ['DB_USER'])
+password_db = str(os.environ['DB_PASS'])
+db_host = str(os.environ['DB_HOST'])
+db_port = str(os.environ['DB_PORT'])
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'EvidAI',
-        'USER': 'postgres',
-        'PASSWORD': 'postgres',
-        'HOST': '127.0.0.1',
-        'PORT': '5432',
+        'NAME': db_name,
+        'USER': user_name,
+        'PASSWORD': password_db,
+        'HOST': db_host,
+        'PORT': db_port,
     }
 }
 
+host_name = os.environ['ES_HOST_NAME']
+# settings.py
+ELASTICSEARCH_DSL = {
+    'default': {
+        'hosts': f"http://{host_name}:9200" #'http://<droplet_ip>:9200'  # Replace <droplet_ip> with the actual IP address of your droplet
+    },
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
@@ -142,18 +160,16 @@ CORS_ALLOW_METHODS = [
 ]
 
 # Allow all headers
-CORS_ALLOW_HEADERS = ['evidaibot.ddns.net','127.0.0.1','103.212.140.109']
+allowed_header = os.environ['CORS_HEADERS']
+CORS_ALLOW_HEADERS = [f"{allowed_header}"] #['*']
 
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_BROWSER_XSS_FILTER = True
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
+SECURE_BROWSER_XSS_FILTER = False
 
-SECURE_HSTS_SECONDS = 31536000  # Force HTTPS
-SECURE_SSL_REDIRECT = True  # Redirect all requests to HTTPS
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+# SECURE_HSTS_SECONDS = 31536000  # Force HTTPS
+SECURE_SSL_REDIRECT = False  # Redirect all requests to HTTPS
 
-import logging
 
 LOGGING = {
     'version': 1,
